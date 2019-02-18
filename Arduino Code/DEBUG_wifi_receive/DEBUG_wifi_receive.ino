@@ -20,7 +20,7 @@ const unsigned int destPort = 9000;
 const unsigned int localPort = 8000;
 char incomingPacket[255];
 //int preset = 0;     //preset initializes to patch/preset 
-int btn_mute = 0;
+int btn_mute = 1;
 OSCErrorCode errorerer;
 
 void setup() {
@@ -53,25 +53,12 @@ void setup() {
 }
 
 void loop(){
- // GUI_IN();
+  GUI_IN();
   //sendOSCBACK();
+  //inputContents();
   
-  int packetSize = Udp.parsePacket();
-  if (packetSize)
-  {
-    // receive incoming UDP packets
-    Serial.printf("Received %d bytes from %s, port %d\n", packetSize, Udp.remoteIP().toString().c_str(), Udp.remotePort());
-    int len = Udp.read(incomingPacket, 255);
-    if (len > 0)
-    {
-      incomingPacket[len] = 0;
-    }
-    Serial.printf("UDP packet contents: %s\n", incomingPacket);
-
-  }
-  Serial.print(btn_mute);
-  Serial.print(" ");
-  // delay(25);
+   delay(5);
+   /*
   OSCBundle msgIN;
   int size;
   if((size = Udp.parsePacket())>0){
@@ -92,9 +79,24 @@ void loop(){
     errorerer = msgIN.getError();
     Serial.println(errorerer);
   }
-  delay(25);
+  delay(5);*/
 }
 
+void inputContents(){
+  int packetSize = Udp.parsePacket();
+  if (packetSize)
+  {
+    // receive incoming UDP packets
+    Serial.printf("Received %d bytes from %s, port %d\n", packetSize, Udp.remoteIP().toString().c_str(), Udp.remotePort());
+    int len = Udp.read(incomingPacket, 255);
+    if (len > 0)
+    {
+      incomingPacket[len] = 0;
+    }
+    Serial.printf("UDP packet contents: %s\n", incomingPacket);
+
+  }
+}
 void sendOSCBACK(){
   Serial.println("debug:entered sendback");
   Serial.println(btn_mute);
@@ -123,9 +125,9 @@ void GUI_IN(){
 void mute(OSCMessage &msg, int addrOffset){
   Serial.println("debug:entered mute");
   bool  LED_val = (boolean) msg.getFloat(0);
-  OSCMessage node_out("/1/label3");
+  OSCMessage node_out("/1/label3 ");
   digitalWrite(LED, LED_val);
-  node_out.add(LED_val);
+  node_out.add(btn_mute);
   if(LED_val){
     Serial.print("ON ");
     Serial.println(LED_val);
@@ -138,7 +140,7 @@ void mute(OSCMessage &msg, int addrOffset){
   btn_mute = !btn_mute;
    node_out.add(btn_mute);
 digitalWrite(LED, LED_val);
-  Udp.beginPacket(Udp.remoteIP(),destIpad);
+  Udp.beginPacket(destIpad,destIpad);
   node_out.send(Udp);
   Udp.endPacket();
   node_out.empty();
@@ -146,11 +148,11 @@ digitalWrite(LED, LED_val);
 
 void debug_fader(OSCMessage &msg, int addrOffset){
   Serial.println("debug:entered fader");
-  int fad_val = msg.getFloat(0);
+  float fad_val = msg.getFloat(0);
   OSCMessage node_out("/1/label");
-  byte fad_val_b = res_con_1t256(fad_val);
+  byte fad_val_b = floor(fad_val*255);
   Serial.println("Fader value is: ");
-  Serial.println(fad_val);
+  Serial.println(fad_val_b);
   Serial.print(" , ");
   Serial.print(fad_val_b);
   node_out.add(fad_val);
