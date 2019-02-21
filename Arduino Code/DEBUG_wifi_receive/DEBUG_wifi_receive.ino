@@ -1,3 +1,5 @@
+//Francisco Alegria
+
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include <OSCMessage.h>
@@ -19,10 +21,12 @@ const IPAddress destIpad(192,168,0,4); //iPad
 const unsigned int destPort = 9000;
 const unsigned int localPort = 8000;
 char incomingPacket[255];
-//int preset = 0;     //preset initializes to patch/preset 
-int btn_mute = 1;
-OSCErrorCode errorerer;
+int btn_mute = 0;
+OSCErrorCode errCode;
+float fad_val_old  = 0;
+bool  LED_val = 0;
 
+//////////////////////////////////////////////
 void setup() {
   pinMode(LED, OUTPUT);
  //I2C
@@ -51,12 +55,10 @@ void setup() {
     Udp.begin(localPort);
     Serial.printf("Now listening at IP %s, UDP port %d\n", WiFi.localIP().toString().c_str(), localPort);
 }
-
+//////////////////////////////////////////////////////
 void loop(){
   GUI_IN();
-  //sendOSCBACK();
   //inputContents();
-  
    delay(5);
    /*
   OSCBundle msgIN;
@@ -76,12 +78,13 @@ void loop(){
   }
   else{
     Serial.println("ERROR ERROR ");
-    errorerer = msgIN.getError();
-    Serial.println(errorerer);
+    errCode = msgIN.getError();
+    Serial.println(errCode);
   }
   delay(5);*/
 }
 
+/////////////////////////////////////////////////////////
 void inputContents(){
   int packetSize = Udp.parsePacket();
   if (packetSize)
@@ -94,20 +97,23 @@ void inputContents(){
       incomingPacket[len] = 0;
     }
     Serial.printf("UDP packet contents: %s\n", incomingPacket);
-
   }
 }
-void sendOSCBACK(){
-  Serial.println("debug:entered sendback");
-  Serial.println(btn_mute);
-  OSCMessage msg("/1/label3 ");
-  msg.add(btn_mute);
+/////////////////////////////////////////////////////////
+void sendNodeOSC(char destOSCAdd[], int dataSend){
+  Serial.println("debug:entered sendNodeOSC");
+ /* Serial.println(destOSCAdd);
+  //Serial.println(charSend);
+  Serial.println(dataSend);
+  Serial.println(destIpad); // */
+  OSCMessage send2node(destOSCAdd);
+  send2node.add(dataSend);
   Udp.beginPacket(destIpad,destPort);
-  msg.send(Udp);
+  send2node.send(Udp);
   Udp.endPacket();
-  msg.empty();
+  send2node.empty();
 }
-
+//////////////////////////////////////////////////
 void GUI_IN(){
   Serial.println("debug:entered gui_in");
   OSCMessage gui_in;
@@ -121,13 +127,10 @@ void GUI_IN(){
       }
   } 
 }
-
+//////////////////////////////////////////////////////
 void mute(OSCMessage &msg, int addrOffset){
   Serial.println("debug:entered mute");
-  bool  LED_val = (boolean) msg.getFloat(0);
-  OSCMessage node_out("/1/label3 ");
-  digitalWrite(LED, LED_val);
-  node_out.add(btn_mute);
+  LED_val = (boolean) msg.getFloat(0);
   if(LED_val){
     Serial.print("ON ");
     Serial.println(LED_val);
@@ -136,37 +139,40 @@ void mute(OSCMessage &msg, int addrOffset){
     Serial.print("OFF ");
     Serial.println(LED_val);
   }
-  LED_val = !LED_val;
-  btn_mute = !btn_mute;
-   node_out.add(btn_mute);
-digitalWrite(LED, LED_val);
-  Udp.beginPacket(destIpad,destIpad);
-  node_out.send(Udp);
-  Udp.endPacket();
-  node_out.empty();
+  digitalWrite(LED, LED_val);
+  sendNodeOSC("/1/label3", LED_val);
+  delay(5);
 }
-
+//////////////////////////////////////////////////////////////////
 void debug_fader(OSCMessage &msg, int addrOffset){
   Serial.println("debug:entered fader");
-  float fad_val = msg.getFloat(0);
-  OSCMessage node_out("/1/label");
-  byte fad_val_b = floor(fad_val*255);
-  Serial.println("Fader value is: ");
-  Serial.println(fad_val_b);
+  float fad_val_new = msg.getFloat(0);
+  byte fad_val_b = floor(fad_val_new*255);
+  int fad_val_i;
+  if( (fad_val_new == fad_val_old) || (abs(fad_val_old - fad_val_new)>5)){
+    fad_val_i = floor(fad_val_new*255);
+    if(LED_val)
+    {
+      Wire.beginTransmission(0x28);
+      Wire.write(0xAF);
+      Wire.write(fad_val_b);
+      Wire.endTransmission();
+    }
+    else
+    {
+      Wire.beginTransmission(0x28);
+      Wire.write(0xA9);
+      Wire.write(fad_val_b);
+      Wire.endTransmission();
+    }
+    sendNodeOSC("/1/label", fad_val_i);
+  }
+  else{
+    fad_val_old = fad_val_new;
+  }
+  Serial.println("Fader input value is: ");
+  Serial.print(fad_val_new);
   Serial.print(" , ");
   Serial.print(fad_val_b);
-  node_out.add(fad_val);
-  Udp.beginPacket(Udp.remoteIP(), destIpad);
-  node_out.send(Udp);
-  Udp.endPacket();
-  node_out.empty();
-}
-
-byte res_con_1t256(int val){
-  Serial.println("debug:entered res_con");
-  int digi_write_val;
-  byte digi_byte;
-  digi_write_val = (254*val)+1;
-  digi_byte = (byte) digi_write_val;
-  return digi_byte;
+  delay(5);
 }
